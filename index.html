@@ -2,40 +2,60 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Imagem para Melodia Avançado</title>
+    <title>Conversor Imagem-Música Avançado</title>
     <style>
-        /* Estilos atualizados */
-        body { font-family: Arial, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; background-color: #f0f0f0; }
-        .container { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0; }
-        .visualization { margin-top: 20px; padding: 10px; border: 1px solid #ccc; height: 150px; overflow-x: auto; }
-        .note-block { display: inline-block; padding: 5px; margin: 2px; background-color: #4CAF50; color: white; border-radius: 3px; }
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 1000px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            background-color: #f0f0f0; 
+        }
+        .container { 
+            background-color: white; 
+            padding: 20px; 
+            border-radius: 10px; 
+            box-shadow: 0 0 10px rgba(0,0,0,0.1); 
+        }
+        .controls { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            gap: 15px; 
+            margin: 20px 0; 
+        }
+        .preview-container { 
+            position: relative; 
+            margin: 20px 0; 
+        }
+        #cameraPreview {
+            border: 2px solid #333;
+            max-width: 300px;
+        }
+        #imagePreview {
+            max-width: 300px;
+            display: none;
+        }
+        .status { 
+            padding: 10px; 
+            margin: 10px 0; 
+            background-color: #e0e0e0; 
+            border-radius: 5px; 
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Converta Imagens em Melodias</h1>
-        
-        <input type="file" id="imageInput" accept="image/*">
-        <canvas id="preview" style="display: none;"></canvas>
+        <h1>Conversor Imagem-Música</h1>
         
         <div class="controls">
             <div>
-                <h3>Sintetizador</h3>
-                <label>Waveform:
-                    <select id="waveform">
-                        <option value="sine">Sine</option>
-                        <option value="square">Square</option>
-                        <option value="sawtooth">Sawtooth</option>
-                        <option value="triangle">Triangle</option>
-                    </select>
-                </label>
-                <label>Attack: <input type="range" id="attack" min="0" max="1" step="0.1" value="0.5"></label>
-                <label>Release: <input type="range" id="release" min="0" max="1" step="0.1" value="0.5"></label>
+                <h3>Entrada</h3>
+                <input type="file" id="imageInput" accept="image/*">
+                <button id="btnCamera">Capturar da Câmera</button>
             </div>
-
+            
             <div>
-                <h3>Configurações Musicais</h3>
+                <h3>Configurações</h3>
                 <label>Escala:
                     <select id="scale">
                         <option value="major">Maior</option>
@@ -43,62 +63,72 @@
                         <option value="pentatonic">Pentatônica</option>
                     </select>
                 </label>
+                <label>Timbre:
+                    <select id="timbre">
+                        <option value="sine">Piano</option>
+                        <option value="square">Violino</option>
+                        <option value="sawtooth">Trompete</option>
+                        <option value="triangle">Flauta</option>
+                    </select>
+                </label>
                 <label>BPM: <input type="number" id="bpm" value="120" min="30" max="300"></label>
-                <label>Duração: <input type="number" id="duration" value="0.5" step="0.1" min="0.1" max="2"></label>
-                <label>Oitava: <input type="number" id="octave" value="4" min="1" max="7"></label>
             </div>
-
+            
             <div>
                 <h3>Ações</h3>
-                <button id="playButton" disabled>Tocar Melodia</button>
-                <button id="exportButton" disabled>Exportar MIDI</button>
-                <button id="stopButton" disabled>Parar</button>
+                <button id="btnPlay" disabled>Tocar</button>
+                <button id="btnStop" disabled>Parar</button>
+                <button id="btnExport" disabled>Exportar MIDI</button>
             </div>
         </div>
 
-        <h3>Visualização da Partitura</h3>
-        <div class="visualization" id="sheetMusic"></div>
-        <div id="status"></div>
+        <div class="preview-container">
+            <img id="imagePreview" alt="Pré-visualização">
+            <video id="cameraPreview" autoplay playsinline></video>
+        </div>
+
+        <div class="status" id="status"></div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/midi-writer-js@2.1.4/build/browser.min.js"></script>
     <script>
-        let synth = new Tone.Synth().toDestination();
+        const synth = new Tone.Synth().toDestination();
         let notes = [];
         let activeSequence = null;
+        let mediaStream = null;
 
         // Configurações de escalas
         const scales = {
-            major: ['C', 'D', 'E', 'F', 'G', 'A', 'B'],
-            minor: ['C', 'D', 'Eb', 'F', 'G', 'Ab', 'Bb'],
-            pentatonic: ['C', 'D', 'F', 'G', 'A']
+            major: [0, 2, 4, 5, 7, 9, 11],
+            minor: [0, 2, 3, 5, 7, 8, 10],
+            pentatonic: [0, 2, 4, 7, 9]
         };
 
-        function updateSynth() {
-            synth.dispose();
-            synth = new Tone.Synth({
-                oscillator: { type: document.getElementById('waveform').value },
-                envelope: {
-                    attack: parseFloat(document.getElementById('attack').value),
-                    release: parseFloat(document.getElementById('release').value)
-                }
-            }).toDestination();
-        }
+        // Inicialização da câmera
+        document.getElementById('btnCamera').addEventListener('click', async () => {
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const video = document.getElementById('cameraPreview');
+                video.srcObject = mediaStream;
+                document.getElementById('imagePreview').style.display = 'none';
+                video.style.display = 'block';
+            } catch (err) {
+                updateStatus('Erro ao acessar a câmera: ' + err.message);
+            }
+        });
 
+        // Processamento de imagem
         document.getElementById('imageInput').addEventListener('change', processImage);
-        document.getElementById('waveform').addEventListener('change', updateSynth);
-        document.getElementById('attack').addEventListener('input', updateSynth);
-        document.getElementById('release').addEventListener('input', updateSynth);
 
         async function processImage(e) {
             const file = e.target.files[0];
             const reader = new FileReader();
             
-            reader.onload = async function(event) {
+            reader.onload = async (event) => {
                 const img = new Image();
-                img.onload = function() {
-                    const canvas = document.getElementById('preview');
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
                     
                     canvas.width = img.width;
@@ -106,12 +136,13 @@
                     ctx.drawImage(img, 0, 0);
                     
                     convertImageToNotes(canvas);
-                    updateSheetMusic();
-                    document.getElementById('playButton').disabled = false;
-                    document.getElementById('exportButton').disabled = false;
-                    document.getElementById('stopButton').disabled = false;
+                    updateStatus('Imagem processada com sucesso!');
+                    toggleControls(true);
                 };
                 img.src = event.target.result;
+                document.getElementById('imagePreview').src = event.target.result;
+                document.getElementById('imagePreview').style.display = 'block';
+                document.getElementById('cameraPreview').style.display = 'none';
             };
             reader.readAsDataURL(file);
         }
@@ -122,67 +153,88 @@
             notes = [];
             
             const selectedScale = document.getElementById('scale').value;
-            const octave = parseInt(document.getElementById('octave').value);
-            const scale = scales[selectedScale];
-
-            for(let i = 0; i < imageData.data.length; i += 4) {
-                const brightness = (imageData.data[i] + imageData.data[i+1] + imageData.data[i+2]) / 3;
-                const noteIndex = Math.floor((brightness / 255) * scale.length);
-                const note = scale[noteIndex] + octave;
-                notes.push(note);
+            const scaleNotes = scales[selectedScale];
+            
+            // Processamento otimizado
+            for(let i = 0; i < imageData.data.length; i += 16) {
+                const r = imageData.data[i];
+                const g = imageData.data[i+1];
+                const b = imageData.data[i+2];
+                
+                const brightness = (r + g + b) / 3;
+                const noteValue = scaleNotes[Math.floor((brightness / 255) * scaleNotes.length)];
+                const midiNote = 60 + noteValue; // C4 como base
+                
+                notes.push(midiNote);
             }
+            
+            // Limita a 1000 notas para performance
+            notes = notes.slice(0, 1000);
         }
 
-        function updateSheetMusic() {
-            const container = document.getElementById('sheetMusic');
-            container.innerHTML = '';
-            
-            notes.slice(0, 50).forEach(note => { // Mostra apenas as primeiras 50 notas
-                const div = document.createElement('div');
-                div.className = 'note-block';
-                div.textContent = note;
-                container.appendChild(div);
-            });
-        }
-
-        document.getElementById('playButton').addEventListener('click', async () => {
-            await Tone.start();
-            if (activeSequence) activeSequence.stop();
-            
-            const bpm = parseInt(document.getElementById('bpm').value);
-            const duration = parseFloat(document.getElementById('duration').value);
-            
-            Tone.Transport.bpm.value = bpm;
-            activeSequence = new Tone.Sequence((time, note) => {
-                synth.triggerAttackRelease(note, duration, time);
-            }, notes).start(0);
-            
-            Tone.Transport.start();
+        // Controles de áudio
+        document.getElementById('btnPlay').addEventListener('click', async () => {
+            try {
+                await Tone.start();
+                if (activeSequence) activeSequence.stop();
+                
+                const bpm = parseInt(document.getElementById('bpm').value);
+                synth.oscillator.type = document.getElementById('timbre').value;
+                
+                Tone.Transport.bpm.value = bpm;
+                activeSequence = new Tone.Sequence((time, note) => {
+                    synth.triggerAttackRelease(note, "8n", time);
+                }, notes).start(0);
+                
+                Tone.Transport.start();
+                updateStatus('Reproduzindo...');
+                toggleTransportControls(true);
+            } catch (err) {
+                updateStatus('Erro: ' + err.message);
+            }
         });
 
-        document.getElementById('stopButton').addEventListener('click', () => {
+        document.getElementById('btnStop').addEventListener('click', () => {
             Tone.Transport.stop();
-            if (activeSequence) activeSequence.stop();
+            activeSequence.stop();
+            updateStatus('Parado');
+            toggleTransportControls(false);
         });
 
-        document.getElementById('exportButton').addEventListener('click', () => {
+        // Export MIDI
+        document.getElementById('btnExport').addEventListener('click', () => {
             const track = new MidiWriter.Track();
-            const duration = document.getElementById('duration').value;
+            track.addEvent(new MidiWriter.ProgramChangeEvent({ instrument: 1 }));
             
             notes.forEach(note => {
-                const event = new MidiWriter.NoteEvent({
+                track.addEvent(new MidiWriter.NoteEvent({
                     pitch: [note],
-                    duration: 'T' + (duration * 4)
-                });
-                track.addEvent(event);
+                    duration: '8',
+                    velocity: 100
+                }));
             });
-
-            const write = new MidiWriter.Writer(track);
+            
+            const writer = new MidiWriter.Writer(track);
             const link = document.createElement('a');
-            link.href = 'data:audio/midi;base64,' + btoa(write.buildFile());
-            link.download = 'melody.mid';
+            link.href = 'data:audio/midi;base64,' + btoa(writer.buildFile());
+            link.download = 'composicao.mid';
             link.click();
         });
+
+        // Funções auxiliares
+        function updateStatus(message) {
+            document.getElementById('status').textContent = message;
+        }
+
+        function toggleControls(enabled) {
+            document.getElementById('btnPlay').disabled = !enabled;
+            document.getElementById('btnExport').disabled = !enabled;
+        }
+
+        function toggleTransportControls(playing) {
+            document.getElementById('btnPlay').disabled = playing;
+            document.getElementById('btnStop').disabled = !playing;
+        }
     </script>
 </body>
 </html>
